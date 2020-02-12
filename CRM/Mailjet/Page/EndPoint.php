@@ -61,6 +61,10 @@ class CRM_Mailjet_Page_EndPoint extends CRM_Core_Page {
     }
 
     if ($message->isTransactional()) {
+
+      // run hook for transactional mailings
+      CRM_Utils_MailjetCustomisationHooks::handle_transactional_bounce_event($msg);
+
       $allowedEvents = array('bounce', 'blocked', 'spam', 'unsub');
       if (!in_array($message->event, $allowedEvents)) {
         return 'HTTP/1.1 200 Ok';
@@ -98,6 +102,10 @@ class CRM_Mailjet_Page_EndPoint extends CRM_Core_Page {
     }
 
     if ($message->isMailing()) {
+
+      // run hook for transactional mailings
+      CRM_Utils_MailjetCustomisationHooks::handle_mailing_bounce_event($msg);
+
       /* https://www.mailjet.com/docs/event_tracking for more informations. */
       switch ($message->event) {
         //For unsupported events, we just store them raw
