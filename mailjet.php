@@ -198,7 +198,7 @@ function prepareEventPayload($params) {
     ]);
   }
   // decode current payload
-  $current_payload = json_decode($params['headers']['X-MJ-EventPayload']);
+  $current_payload = json_decode($params['headers']['X-MJ-EventPayload'], TRUE);
   // add Event Payload
   $current_payload['jobId'] = (int) CRM_Utils_Array::value('job_id', $params);
   $current_payload['activityId'] = (int) CRM_Utils_Array::value('custom-activity-id', $params);
