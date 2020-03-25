@@ -103,7 +103,7 @@ class CRM_Mailjet_Page_EndPoint extends CRM_Core_Page {
 
     if ($message->isMailing()) {
 
-      // run hook for transactional mailings
+      // run hook for mass-mailings
       CRM_Utils_MailjetCustomisationHooks::handle_mailing_bounce_event($msg);
 
       /* https://www.mailjet.com/docs/event_tracking for more informations. */
