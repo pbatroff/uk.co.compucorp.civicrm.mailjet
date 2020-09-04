@@ -70,26 +70,28 @@ class CRM_Mailjet_Page_EndPoint extends CRM_Core_Page {
         return 'HTTP/1.1 200 Ok';
       }
 
-      $emailParams = [
-        'sequential' => 1,
-        'email' => $message->email,
-        'contact_id' => ['IS NOT NULL' => 1],
-      ];
-      $emailResult = civicrm_api3('Email', 'get', $emailParams);
-      if (isset($emailResult['values']) && !empty($emailResult['values'])) {
-        foreach ($emailResult['values'] as $email) {
+      $emailValues = $this->findEmail($message->email);
+      if ($emailValues) {
+        foreach ($emailValues as $email) {
           $emailId = $email['id'];
           $contactId = $email['contact_id'];
           $this->createBounceActivity($message, $contactId);
-          if (
-            ($message->event == 'bounce' && $message->hard_bounce) ||
-            ($message->event == 'spam')
-          ) {
-            $this->setOnHoldHard($emailId, $message->email);
-          }
-          if ($message->event == 'unsub') {
-            $this->setOnHoldHard($emailId, $message->email);
-            $this->setOptOut($contactId);
+          switch ($message->event) {
+            case 'bounce':
+              if ($message->hard_bounce) {
+                $this->setOnHoldHard($emailId, $message->email);
+              }
+              // fixme what with else?
+              break;
+
+            case 'spam':
+              $this->setOnHoldHard($emailId, $message->email);
+              break;
+
+            case 'unsub':
+              $this->setOnHoldHard($emailId, $message->email);
+              $this->setOptOut($contactId);
+              break;
           }
         }
       }
@@ -111,7 +113,6 @@ class CRM_Mailjet_Page_EndPoint extends CRM_Core_Page {
         //For unsupported events, we just store them raw
         case 'open':
         case 'click':
-        case 'unsub':
         case 'typofix':
           CRM_Mailjet_BAO_Event::createFromPostData($message);
           return 'HTTP/1.1 200 Ok';
@@ -119,47 +120,50 @@ class CRM_Mailjet_Page_EndPoint extends CRM_Core_Page {
         //We replace the civi delivery time with the mailjet one
         //but keep the civi one for comparison
         case 'sent':
-          $emailParams = [
-            'sequential' => 1,
-            'email' => $message->email,
-          ];
-          $emailResult = civicrm_api3('Email', 'get', $emailParams);
-          if (isset($emailResult['values']) && !empty($emailResult['values'])) {
-            foreach ($emailResult['values'] as $email) {
+          $emailValues = $this->findEmail($message->email, FALSE);
+          if ($emailValues) {
+            foreach ($emailValues as $email) {
               CRM_Mailjet_Page_EndPoint::updateDelivery($message, $email['id']);
             }
-            return 'HTTP/1.1 200 Ok';
           }
           else {
-            //This shouldn't happen, let's log the event
-            CRM_Mailjet_BAO_Event::createFromPostData($message);
-            CRM_Core_Error::debug_var("MAILJET TRIGGER", "Unknown address $message->email event " . $message->event, TRUE, TRUE);
-            return 'HTTP/1.1 422 unknown email address';
+            $this->logUnkownAddress($message);
           }
+          return 'HTTP/1.1 200 Ok';
 
         //we treat bounce, span and blocked as bounce mailing in CiviCRM
         case 'bounce':
         case 'spam':
         case 'blocked':
-          $emailParams = [
-            'sequential' => 1,
-            'email' => $message->email,
-            'contact_id' => ['IS NOT NULL' => 1],
-          ];
-          $emailResult = civicrm_api3('Email', 'get', $emailParams);
-          if (isset($emailResult['values']) && !empty($emailResult['values'])) {
-            foreach ($emailResult['values'] as $email) {
+          $emailValues = $this->findEmail($message->email);
+          if ($emailValues) {
+            foreach ($emailValues as $email) {
               $params = CRM_Mailjet_Page_EndPoint::prepareBounceParams($message, $email['id'], $email['contact_id']);
               CRM_Mailjet_BAO_Event::recordBounce($params);
             }
-            return 'HTTP/1.1 200 Ok';
           }
           else {
-            //This shouldn't happen, let's log the event
-            CRM_Mailjet_BAO_Event::createFromPostData($message);
-            CRM_Core_Error::debug_var("MAILJET TRIGGER", "Unknown address $message->email event " . $message->event, TRUE, TRUE);
-            return 'HTTP/1.1 422 unknown email address';
+            $this->logUnkownAddress($message);
           }
+          return 'HTTP/1.1 200 Ok';
+
+        case 'unsub':
+          CRM_Mailjet_BAO_Event::createFromPostData($message);
+          $emailValues = $this->findEmail($message->email);
+          if ($emailValues) {
+            foreach ($emailValues as $email) {
+              $emailId = $email['id'];
+              $contactId = $email['contact_id'];
+              $this->createBounceActivity($message, $contactId);
+              $this->setOnHoldHard($emailId, $message->email);
+              $this->setOptOut($contactId);
+            }
+          }
+          else {
+            $this->logUnkownAddress($message);
+          }
+          return 'HTTP/1.1 200 Ok';
+          break;
 
         default:
           CRM_Core_Error::debug_var("MAILJET TRIGGER", "No handler for $message->event", TRUE, TRUE);
@@ -168,6 +172,12 @@ class CRM_Mailjet_Page_EndPoint extends CRM_Core_Page {
     }
 
     return 'HTTP/1.1 200 Ok';
+  }
+
+  private function logUnkownAddress($message) {
+    //This shouldn't happen, let's log the event
+    CRM_Mailjet_BAO_Event::createFromPostData($message);
+    CRM_Core_Error::debug_var("MAILJET TRIGGER", "Unknown address $message->email event " . $message->event, TRUE, TRUE);
   }
 
   /**
@@ -211,6 +221,26 @@ class CRM_Mailjet_Page_EndPoint extends CRM_Core_Page {
     $params['is_spam'] = ($message->event == 'spam');
 
     return $params;
+  }
+
+  /**
+   * @param string $email
+   * @param bool $contactIdIsNotNull
+   *
+   * @return mixed
+   * @throws \CiviCRM_API3_Exception
+   */
+  private function findEmail($email, $contactIdIsNotNull = TRUE) {
+    $emailParams = [
+      'sequential' => 1,
+      'email' => $email,
+    ];
+    if ($contactIdIsNotNull) {
+      $emailParams['contact_id'] = ['IS NOT NULL' => 1];
+    }
+    $emailResult = civicrm_api3('Email', 'get', $emailParams);
+
+    return $emailResult['values'];
   }
 
   /**
