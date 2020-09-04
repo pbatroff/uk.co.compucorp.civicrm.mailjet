@@ -37,7 +37,7 @@ class CRM_Utils_MailjetCustomisationHooks {
    *
    * @return mixed
    */
-  static function handle_transactional_bounce_event(&$bounce_message) {
+  static function handle_transactional_event(&$bounce_message) {
 
     if (version_compare(CRM_Utils_System::version(), '4.5', '<')) {
       return CRM_Utils_Hook::singleton()->invoke(3, $bounce_message, self::$null, self::$null, self::$null, self::$null, 'civicrm_mailjet_transactional_bounce');
@@ -52,7 +52,7 @@ class CRM_Utils_MailjetCustomisationHooks {
    *
    * @return mixed
    */
-  static function handle_mailing_bounce_event(&$bounce_message) {
+  static function handle_mailing_event(&$bounce_message) {
 
     if (version_compare(CRM_Utils_System::version(), '4.5', '<')) {
       return CRM_Utils_Hook::singleton()->invoke(3, $bounce_message, self::$null, self::$null, self::$null, self::$null, 'civicrm_mailjet_mailing_bounce');
