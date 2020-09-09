@@ -9,7 +9,7 @@
 /**
  * Defines the hooks that allow specialized bounce handling
  */
-class CRM_Utils_Hooks {
+class CRM_Mailjet_Hooks {
 
   static $null = NULL;
 
